@@ -1,0 +1,4 @@
+.vscode
+.DS_Store
+masking_data/*
+!masking_data/test
