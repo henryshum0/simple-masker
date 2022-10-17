@@ -18,7 +18,7 @@
 - Git must be installed.
 - Python 3.6+ installed on your system.
 - An accompanying Pip installation.
-- Python, Git, and Pip must be accesible from the command line interface on your machine.
+- Python, Git, and Pip must be accessible from the command line interface on your machine.
 
 ## Installation
 
