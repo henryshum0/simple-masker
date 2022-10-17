@@ -15,8 +15,6 @@
 
 ## Prerequisites
 
-You must have:
-
 - Git must be installed.
 - Python 3.6+ installed on your system.
 - An accompanying Pip installation.
