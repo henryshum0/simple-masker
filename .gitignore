@@ -2,3 +2,4 @@
 .DS_Store
 masking_data/*
 !masking_data/test
+__pycache__
