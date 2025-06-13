@@ -49,7 +49,7 @@ function drawMask(mask, height, width) {
         mask_ctx.fillRect(0, 0, mask_canvas.width, mask_canvas.height);
     } else {
         let img = new Image();
-        img.onload = function() {
+        img.onload = function () {
             mask_ctx.drawImage(this, 0, 0, mask_canvas.width, mask_canvas.height);
         }
         img.src = mask;
@@ -88,7 +88,7 @@ function storeState() {
     }
 }
 
-function getMouseXY(e){
+function getMouseXY(e) {
     let rect = e.target.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
@@ -127,6 +127,7 @@ function paintMouseUp(e) {
 }
 
 function paintMouseMove(e) {
+    
     e.preventDefault();
     e.stopPropagation();
 
@@ -229,8 +230,8 @@ let uiHidden = false;
 function hideUI() {
     uiHidden = !uiHidden;
     const ids = ["control-save", "control-switch", "control-size1", "control-size2",
-                 "control-size3", "next-button", "back-button", "control-toggle-mask",
-                 "control-undo", "control-redo"];
+        "control-size3", "next-button", "back-button", "control-toggle-mask",
+        "control-undo", "control-redo"];
     for (const elm_id of ids) {
         let elm = document.getElementById(elm_id);
         if (uiHidden) {
@@ -300,7 +301,7 @@ function saveMask(category, index) {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({'mask': canvas.toDataURL()})
+        body: JSON.stringify({ 'mask': canvas.toDataURL() })
     });
     promise.then(response => {
         if (response.status !== 200) {
@@ -316,7 +317,7 @@ function saveMask(category, index) {
                 save.innerHTML = "❌ Error";
             }
 
-            setTimeout(function() {
+            setTimeout(function () {
                 save.innerHTML = "💾 Save";
             }, 3000);
         }).catch(error => {
@@ -338,4 +339,52 @@ function keyboardShortcuts(e) {
     } else if (e.key === '3') {
         changeBrushSize(20);
     }
+    else if (e.key === 'w')
+    {
+        window.scrollBy(0, -100);
+    }
+    else if (e.key === 's')
+    {
+        window.scrollBy(0, 100);
+    }
+    else if (e.key === 'a'
+    )
+    {
+        window.scrollBy(-100, 0);
+    }
+    else if (e.key === 'd') {
+        window.scrollBy(100, 0);
+    }
+    // Switch color
+    else if (e.key === 'c') {
+        switchColor();
+    }
+    // Toggle mask visibility
+    else if (e.key === 'm') {
+        toggleMask();
+    }
+    // Hide UI
+    else if (e.key === 'h') {
+        hideUI();
+    }
 }
+
+function fixUIScale() {
+    const container = document.getElementById('paint-controls');
+    const back_btn = document.getElementById('back-button');
+    const next_btn = document.getElementById('next-button');
+    const scale = 1 / window.devicePixelRatio;
+    if (container) {
+
+        container.style.transform = `scale(${scale})`;
+    }
+    if (back_btn) {
+        back_btn.style.transform = `scale(${scale})`;
+    }
+    if (next_btn) {
+        next_btn.style.transform = `scale(${scale})`;
+    }
+
+}
+window.addEventListener('resize', fixUIScale);
+window.addEventListener('DOMContentLoaded', fixUIScale);

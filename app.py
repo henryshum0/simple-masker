@@ -5,7 +5,7 @@ import re
 import argparse
 from typing import Union
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for
 
 
 parser = argparse.ArgumentParser()
@@ -98,6 +98,21 @@ app = Flask(__name__,
             static_url_path='',
             static_folder='public',
             template_folder='./public')
+
+
+@app.route("/")
+def index():
+    # Attempt to find the first category and redirect to its first image
+    categories_path = args.root_data_path
+    try:
+        categories = [d for d in listdir(categories_path) if not isfile(join(categories_path, d))]
+        if categories:
+            # Redirect to the first category and first image
+            return redirect(url_for('img_mask', category=categories[0], img_num=0))
+        else:
+            return "No categories found in data path.", 404
+    except Exception as e:
+        return f"Error: {e}", 500
 
 
 @app.route("/masking/<string:category>/<int:img_num>")

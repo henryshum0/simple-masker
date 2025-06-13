@@ -18,8 +18,7 @@ html, body {
 }
 
 #mask-image {
-    height: 100%;
-    max-width: 100%;
+
     object-fit: contain;
     display: block;
     margin: auto;
@@ -32,8 +31,7 @@ html, body {
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
-    max-height: 100%;
-    max-width: 100%;
+
     margin: auto;
     left: 0;
     right: 0;
@@ -44,10 +42,11 @@ html, body {
     opacity: 70%;
 }
 
+/*enaling fixed image size/*
 @media screen and (min-width: 66.625vh) {
     #container {
         height: 100vh;
-        /* width: 66.625vh; */
+        width: 66.625vh;
     }
 }
 
@@ -56,13 +55,14 @@ html, body {
         height: 150.09vw;
         width: 100vw;
     }
-}
+}*/
 
 #paint-controls {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     z-index: 100;
+    transform-origin: top left;
 }
 
 .control-button {
@@ -75,6 +75,8 @@ html, body {
     -moz-user-select: none;    
     -ms-user-select: none;      
     user-select: none;
+    width: 50px;
+    height: 50px;
 }
 
 #next-button {
@@ -82,10 +84,11 @@ html, body {
     background-color: white;
     border: 1px solid black;
     color: black;
-    position: absolute;
+    position: fixed;
     right: 0;
     bottom: 1rem;
     padding: 1rem;
+    transform-origin: bottom right;
 }
 
 #back-button {
@@ -93,8 +96,9 @@ html, body {
     background-color: white;
     border: 1px solid black;
     color: black;
-    position: absolute;
+    position: fixed;
     left: 0;
     bottom: 1rem;
     padding: 1rem;
+    transform-origin: bottom left;
 }
