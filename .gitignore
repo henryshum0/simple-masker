@@ -1,5 +1,5 @@
 .vscode
 .DS_Store
-masking_data/test/Images/*
-masking_data/test/Masks/*
+masking_data/test/Images
+masking_data/test/Masks
 __pycache__
