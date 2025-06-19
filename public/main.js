@@ -64,14 +64,15 @@ let canvas;
 let ctx
 let dragging = false;
 let color = 'white';
-let brush_width = 10;
-let canvas_width = 533;
-let canvas_height = 800;
+let brush_width = 5;
+
 let brush_spacing = 1;
 let last_pos = false;
 let past = [];
 let future = [];
 let history_size = 5;
+let window_dragging = false;
+let window_lastX, window_lastY;
 
 // Utility Functions
 
@@ -114,29 +115,69 @@ function getTouchXY(e) {
 // Desktop/Laptop Handling
 
 function paintMouseDown(e) {
-    storeState();
-    dragging = true;
-    let [x, y] = getMouseXY(e);
-    drawPoint(x, y);
-    last_pos = [x, y];
-}
-
-function paintMouseUp(e) {
-    dragging = false;
-    last_pos = false;
-}
-
-function paintMouseMove(e) {
-    
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (dragging) {
+    if (e.button === 0){
+        storeState();
+        dragging = true;
         let [x, y] = getMouseXY(e);
         drawPoint(x, y);
         last_pos = [x, y];
     }
+    
 }
+
+function paintMouseUp(e) {
+    if (e.button === 0){
+        dragging = false;
+        last_pos = false;
+    }
+    
+}
+
+function paintMouseMove(e) {
+    if (e.button === 0) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (dragging) {
+            let [x, y] = getMouseXY(e);
+            drawPoint(x, y);
+            last_pos = [x, y];
+        }
+    }
+    
+}
+
+function dragWindowDown(e){
+    if (e.button === 1) { // Middle mouse button
+        e.preventDefault();
+        document.body.style.cursor = 'grabbing';
+        window_dragging = true;
+        let [x, y] = [e.clientX, e.clientY];
+        window_lastX = x;
+        window_lastY = y;
+    }
+}
+
+function dragWindowMove(e) {  
+    console.log(window_dragging);
+    if (window_dragging) {
+        let [x, y] = [e.clientX, e.clientY];
+        console.log(x,y); 
+        const dx = x - window_lastX;
+        const dy = y - window_lastY;
+        window.scrollBy(-dx, -dy);
+        window_lastX = x;
+        window_lastY = y;
+    }
+}
+
+function dragWindowUp(e) {
+    if (e.button === 1) {
+        window_dragging = false;
+        document.body.style.cursor = 'crosshair'; // Reset cursor to crosshair
+    }
+}
+
 
 // Mobile Handling
 
@@ -171,6 +212,7 @@ function dist(x1, y1, x2, y2) {
 }
 
 function drawCircle(x, y, width) {
+    ctx.imageSmoothingEnabled = false;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -204,10 +246,17 @@ function drawPoint(x, y) {
 }
 
 // Setup
-
+let customCursor = document.getElementById('custom-cursor');
 function setupCanvas() {
     canvas = document.getElementById("mask-canvas");
     ctx = canvas.getContext('2d');
+    document.body.style.cursor = 'crosshair';
+    display_pensize();
+    updateCustomCursor();
+
+    canvas.addEventListener('mousemove', moveCustomCursor);
+    canvas.addEventListener('mouseenter', updateCustomCursor);
+    canvas.addEventListener('mouseleave', hideCustomCursor);
 
     // Keyboard shortcuts
     document.addEventListener('keyup', keyboardShortcuts);
@@ -219,6 +268,38 @@ function setupCanvas() {
     canvas.addEventListener('touchstart', paintTouchDown);
     canvas.addEventListener('touchmove', paintTouchMove);
     canvas.addEventListener('touchend', paintTouchUp);
+
+    window.addEventListener('resize', fixUIScale);
+    window.addEventListener('DOMContentLoaded', fixUIScale);
+
+    canvas.addEventListener("mousedown", dragWindowDown);
+    canvas.addEventListener("mousemove", dragWindowMove);
+    canvas.addEventListener("mouseup", dragWindowUp);
+
+    canvas.addEventListener('contextmenu', function(e) {
+    e.preventDefault(); // Prevent the default context menu
+    let [x, y] = getMouseXY(e);
+    floodFill(x, y, color);
+});
+
+}
+function updateCustomCursor() {
+    if (!customCursor) customCursor = document.getElementById('custom-cursor');
+    customCursor.style.width = 2 * brush_width + "px";
+    customCursor.style.height = 2 * brush_width + "px";
+    customCursor.style.borderColor = color === "white" ? "white" : "red";
+}
+
+function hideCustomCursor() {
+    if (!customCursor) customCursor = document.getElementById('custom-cursor');
+    customCursor.style.display = "none";
+}
+
+function moveCustomCursor(e) {
+    if (!customCursor) customCursor = document.getElementById('custom-cursor');
+    customCursor.style.left = (e.clientX - brush_width ) + "px";
+    customCursor.style.top = (e.clientY - brush_width ) + "px";
+    customCursor.style.display = "block";
 }
 
 //////////////////////////////////////////////
@@ -263,10 +344,16 @@ function switchColor() {
         color = "white";
         control_switch.innerHTML = "⚪️ White";
     }
+    updateCustomCursor();
 }
 
 function changeBrushSize(size) {
-    brush_width = size;
+    if (brush_width + size < 1) {
+        return; // Prevent brush size from going below 1
+    }
+    brush_width += size;
+    display_pensize();
+    updateCustomCursor();
 }
 
 function undo() {
@@ -331,6 +418,17 @@ function keyboardShortcuts(e) {
     if (e.ctrlKey && e.key === 'z') {
         undo();
     }
+
+    if (e.ctrlKey && e.key === 'y') {
+        redo();
+    }
+    // Save
+    if (e.ctrlKey && e.key === 's') {
+        e.preventDefault(); // Prevent default save dialog
+        let category = document.getElementById("category").value;
+        let img_num = document.getElementById("img_num").value;
+        saveMask(category, img_num);
+    }
     // Brush sizes
     if (e.key === '1') {
         changeBrushSize(3);
@@ -339,22 +437,7 @@ function keyboardShortcuts(e) {
     } else if (e.key === '3') {
         changeBrushSize(20);
     }
-    else if (e.key === 'w')
-    {
-        window.scrollBy(0, -100);
-    }
-    else if (e.key === 's')
-    {
-        window.scrollBy(0, 100);
-    }
-    else if (e.key === 'a'
-    )
-    {
-        window.scrollBy(-100, 0);
-    }
-    else if (e.key === 'd') {
-        window.scrollBy(100, 0);
-    }
+
     // Switch color
     else if (e.key === 'c') {
         switchColor();
@@ -366,6 +449,13 @@ function keyboardShortcuts(e) {
     // Hide UI
     else if (e.key === 'h') {
         hideUI();
+    }
+
+    else if (e.key === 'e') {
+        changeBrushSize(3);
+    }
+    else if (e.key === 'q') {
+        changeBrushSize(-3);
     }
 }
 
@@ -386,5 +476,186 @@ function fixUIScale() {
     }
 
 }
-window.addEventListener('resize', fixUIScale);
-window.addEventListener('DOMContentLoaded', fixUIScale);
+
+function set_cursor(e) {
+    cursor.style.height = brush_width + "px";
+    cursor.style.width = brush_width + "px";
+    cursor.style.left = e.clientX + "px";
+    cursor.style.top = e.clientY + "px";
+    cursor.style.visibility = "visible";
+    cursor.style.color = color
+}
+
+function display_pensize(){
+    let pen_size = document.getElementById("pen-size");
+    pen_size.innerHTML = "🖌 Size: " + brush_width;
+}
+
+function floodFill(x, y, fillColor, tolerance = 64) {
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Convert fillColor to RGBA array
+    let fillR, fillG, fillB, fillA;
+    if (fillColor === 'white') {
+        [fillR, fillG, fillB, fillA] = [255, 255, 255, 255];
+    } else if (fillColor === 'black') {
+        [fillR, fillG, fillB, fillA] = [0, 0, 0, 255];
+    } else {
+        [fillR, fillG, fillB, fillA] = [255, 255, 255, 255];
+    }
+
+    // Get the starting pixel color
+    const startX = Math.floor(x);
+    const startY = Math.floor(y);
+    const startIdx = (startY * width + startX) * 4;
+    const startColor = [
+        data[startIdx],
+        data[startIdx + 1],
+        data[startIdx + 2],
+        data[startIdx + 3]
+    ];
+
+    // If the fill color is the same as the start color, do nothing
+    if (
+        startColor[0] === fillR &&
+        startColor[1] === fillG &&
+        startColor[2] === fillB &&
+        startColor[3] === fillA
+    ) {
+        return;
+    }
+
+    // Helper to compare pixel color with tolerance
+    function matchColor(idx) {
+        return (
+            Math.abs(data[idx] - startColor[0]) <= tolerance &&
+            Math.abs(data[idx + 1] - startColor[1]) <= tolerance &&
+            Math.abs(data[idx + 2] - startColor[2]) <= tolerance &&
+            Math.abs(data[idx + 3] - startColor[3]) <= tolerance
+        );
+    }
+
+    // Helper to set pixel color
+    function setColor(idx) {
+        data[idx] = fillR;
+        data[idx + 1] = fillG;
+        data[idx + 2] = fillB;
+        data[idx + 3] = fillA;
+    }
+
+    // Optimized scanline flood fill
+    const stack = [[startX, startY]];
+    while (stack.length > 0) {
+        let [x, y] = stack.pop();
+        let idx = (y * width + x) * 4;
+
+        // Move to the leftmost pixel in this scanline
+        while (x >= 0 && matchColor(idx)) {
+            x--;
+            idx -= 4;
+        }
+        x++;
+        idx += 4;
+
+        let spanAbove = false;
+        let spanBelow = false;
+
+        // Fill rightwards and check above/below
+        while (x < width && matchColor(idx)) {
+            setColor(idx);
+
+            // Check pixel above
+            if (y > 0) {
+                const aboveIdx = ((y - 1) * width + x) * 4;
+                if (matchColor(aboveIdx)) {
+                    if (!spanAbove) {
+                        stack.push([x, y - 1]);
+                        spanAbove = true;
+                    }
+                } else if (spanAbove) {
+                    spanAbove = false;
+                }
+            }
+
+            // Check pixel below
+            if (y < height - 1) {
+                const belowIdx = ((y + 1) * width + x) * 4;
+                if (matchColor(belowIdx)) {
+                    if (!spanBelow) {
+                        stack.push([x, y + 1]);
+                        spanBelow = true;
+                    }
+                } else if (spanBelow) {
+                    spanBelow = false;
+                }
+            }
+
+            x++;
+            idx += 4;
+        }
+    }
+
+    // Update the canvas
+    ctx.putImageData(imageData, 0, 0);
+
+    // Optional: bleed fill by 1px to cover tiny gaps
+    // Comment out if not needed
+    bleedFill(ctx, fillColor);
+}
+
+// Add this helper function after floodFill
+function bleedFill(ctx, fillColor) {
+    const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const data = imageData.data;
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+
+    let fillR, fillG, fillB, fillA;
+    if (fillColor === 'white') {
+        [fillR, fillG, fillB, fillA] = [255, 255, 255, 255];
+    } else if (fillColor === 'black') {
+        [fillR, fillG, fillB, fillA] = [0, 0, 0, 255];
+    } else {
+        [fillR, fillG, fillB, fillA] = [255, 255, 255, 255];
+    }
+
+    // Create a copy to check neighbors
+    const copy = new Uint8ClampedArray(data);
+
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const idx = (y * width + x) * 4;
+            // If not filled, but has a filled neighbor, fill it
+            if (
+                !(data[idx] === fillR && data[idx + 1] === fillG && data[idx + 2] === fillB && data[idx + 3] === fillA)
+            ) {
+                // Check 8 neighbors
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nidx = ((y + dy) * width + (x + dx)) * 4;
+                        if (
+                            copy[nidx] === fillR &&
+                            copy[nidx + 1] === fillG &&
+                            copy[nidx + 2] === fillB &&
+                            copy[nidx + 3] === fillA
+                        ) {
+                            data[idx] = fillR;
+                            data[idx + 1] = fillG;
+                            data[idx + 2] = fillB;
+                            data[idx + 3] = fillA;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
+//flood fill functionality
