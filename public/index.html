@@ -19,6 +19,7 @@
             <div class="control-button" id="pen-size"></div>
             <div class="control-button" id="control-undo" onclick="undo();">↩️ Undo (ctrl+z)</div>
             <div class="control-button" id="control-redo" onclick="redo();">↪️ Redo (ctrl+y)</div>
+            <div class="control-button" id="control-open" onclick="openFiles();">📂 Open</div>
         </div>
         {% if img_num - 1 >= 0 %}
             <a id="back-button" href="/masking/{{category}}/{{img_num - 1}}">Back</a>
@@ -29,7 +30,20 @@
             <img id="mask-image">
         </div>
         <script>
-            load_masking_data("{{category}}", {{img_num}});
+            // Initialize flag to track if we need file opening
+            window.needsFileOpen = false;
+            
+            try {
+                // Try loading from server first
+                load_masking_data("{{category}}", {{img_num}});
+            } catch (e) {
+                console.error("Error loading server data:", e);
+                // If there's an error, prompt for local files without showing dialogs
+                setTimeout(function() {
+                    promptForFileSelection();
+                }, 300);
+            }
+            
             setupCanvas();
         </script>
     </body>

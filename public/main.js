@@ -2,12 +2,23 @@
 // Data functionality
 //////////////////////////////////////////////
 
+// First, properly initialize all file-related variables
+// Add these at the very top of the file to ensure global scope
+let selectedFiles = [];
+let currentFileIndex = 0;
+let localFileMode = false;
+
+// Add this variable to store original filenames
+let originalFilenames = {};
+
 function load_masking_data(category, index) {
     let promise = fetch("/api/masking_data/" + category + "/" + index);
     promise.then(response => {
         if (response.status !== 200) {
             console.log('It looks like there was a problem. Status Code: ' +
                 response.status);
+            // Prompt for file selection on error
+            promptForFileSelection();
             return;
         }
 
@@ -23,17 +34,39 @@ function load_masking_data(category, index) {
                 let tempImage = new Image();
                 tempImage.src = data.image;
                 tempImage.decode().then(() => {
-                    // container.style.width = tempImage.width + "px";
-                    // container.style.height = tempImage.height + "px";
                     drawMask(data.mask, tempImage.height, tempImage.width);
                 });
             } else {
-                console.error(data.message)
+                console.error(data.message);
+                
+                // If server explicitly tells us to use local files
+                if (data.use_local_files) {
+                    console.log("Server suggests using local files");
+                    promptForFileSelection();
+                }
             }
         }).catch(error => {
             console.log(error.message);
+            // Also prompt on JSON parsing error
+            promptForFileSelection();
         })
-    })
+    }).catch(error => {
+        console.log("Network error:", error);
+        // Also prompt on network error
+        promptForFileSelection();
+    });
+}
+
+// Simplify the prompt function to directly open files without confirmation dialogs
+function promptForFileSelection() {
+    // Just highlight the Open button without any alerts or auto-opening
+    window.needsFileOpen = false; // Don't try to auto-open
+    
+    const openBtn = document.getElementById('control-open');
+    if (openBtn) {
+        openBtn.style.animation = 'pulse 1s infinite';
+        openBtn.style.boxShadow = '0 0 10px 5px rgba(255,255,255,0.7)';
+    }
 }
 
 function drawMask(mask, height, width) {
@@ -159,10 +192,8 @@ function dragWindowDown(e){
 }
 
 function dragWindowMove(e) {  
-    console.log(window_dragging);
     if (window_dragging) {
         let [x, y] = [e.clientX, e.clientY];
-        console.log(x,y); 
         const dx = x - window_lastX;
         const dy = y - window_lastY;
         window.scrollBy(-dx, -dy);
@@ -249,7 +280,8 @@ function drawPoint(x, y) {
 let customCursor = document.getElementById('custom-cursor');
 function setupCanvas() {
     canvas = document.getElementById("mask-canvas");
-    ctx = canvas.getContext('2d');
+    // Add willReadFrequently attribute to improve getImageData performance
+    ctx = canvas.getContext('2d', { willReadFrequently: true });
     document.body.style.cursor = 'crosshair';
     display_pensize();
     updateCustomCursor();
@@ -282,6 +314,13 @@ function setupCanvas() {
     floodFill(x, y, color);
 });
 
+    // Remove auto file opening logic
+    // if (window.needsFileOpen) {
+    //     setTimeout(function() {
+    //         window.needsFileOpen = false;
+    //         openFiles();
+    //     }, 100);
+    // }
 }
 function updateCustomCursor() {
     if (!customCursor) customCursor = document.getElementById('custom-cursor');
@@ -378,39 +417,240 @@ function redo() {
     }
 }
 
+// Check if File System Access API is supported
+function isFileSystemAccessSupported() {
+    return 'showOpenFilePicker' in window && 'showSaveFilePicker' in window;
+}
+
+// Function to open files using the file picker
+async function openFiles() {
+    try {
+        // Clear the flag
+        window.needsFileOpen = false;
+        
+        // Set the localFileMode flag
+        window.localFileMode = true;
+        selectedFiles = []; // Initialize the array
+        currentFileIndex = 0;
+        originalFilenames = {}; // Reset original filenames
+        
+        if (isFileSystemAccessSupported()) {
+            // Modern file picker
+            const fileHandles = await window.showOpenFilePicker({
+                multiple: true,
+                types: [{
+                    description: 'Images',
+                    accept: {
+                        'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+                    }
+                }]
+            });
+            
+            if (fileHandles.length > 0) {
+                // Store all selected files
+                for (let i = 0; i < fileHandles.length; i++) {
+                    const file = await fileHandles[i].getFile();
+                    selectedFiles.push({
+                        name: file.name,
+                        file: file
+                    });
+                }
+                
+                // Load the first image
+                if (selectedFiles.length > 0) {
+                    const file = selectedFiles[0].file;
+                    const imageUrl = URL.createObjectURL(file);
+                    
+                    // Store the original filename with the blob URL as key
+                    originalFilenames[imageUrl] = file.name;
+                    
+                    const image = document.getElementById("mask-image");
+                    image.onload = function() {
+                        drawMask(null, image.height, image.width);
+                        // Don't revoke URL immediately or we lose reference
+                        // We'll clean it up later
+                        // URL.revokeObjectURL(imageUrl);
+                    };
+                    image.src = imageUrl;
+                }
+            }
+        } else {
+            // Fallback for browsers without File System Access API
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = function(event) {
+                if (event.target.files.length > 0) {
+                    const file = event.target.files[0];
+                    const imageUrl = URL.createObjectURL(file);
+                    const image = document.getElementById("mask-image");
+                    image.onload = function() {
+                        drawMask(null, image.height, image.width);
+                        URL.revokeObjectURL(imageUrl);
+                    };
+                    image.src = imageUrl;
+                }
+            };
+            input.click();
+        }
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            // Remove the alert and just log to console
+            console.error('Error opening file:', err);
+        }
+    }
+}
+
+// Modify the saveMask function to indicate when we're saving a client-side file
 function saveMask(category, index) {
     let save = document.getElementById("control-save");
     save.innerHTML = "Saving...";
+    
+    // Track if we opened the file locally
+    const isClientSideFile = window.localFileMode === true;
 
-    let promise = fetch("/api/save_mask/" + category + '/' + index, {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 'mask': canvas.toDataURL() })
-    });
-    promise.then(response => {
-        if (response.status !== 200) {
-            console.log('Looks like there was a problem. Status Code: ' +
-                response.status);
-            return;
-        }
+    if (isFileSystemAccessSupported()) {
+        // Use modern File System Access API
+        async function saveWithFileSystem() {
+            try {
+                const blob = await new Promise(resolve => canvas.toBlob(resolve));
 
-        response.json().then(data => {
-            if (data.result) {
-                save.innerHTML = "✅ Success";
-            } else {
+                // Get original image name with better handling
+                let originalFilename = "";
+                
+                // Try to get filename from our stored original filenames first
+                const imgElement = document.getElementById("mask-image");
+                if (imgElement && imgElement.src && originalFilenames[imgElement.src]) {
+                    originalFilename = originalFilenames[imgElement.src];
+                }
+                // If not found, fall back to selectedFiles
+                else if (localFileMode && selectedFiles && selectedFiles.length > 0) {
+                    try {
+                        const fileIndex = Math.min(currentFileIndex, selectedFiles.length - 1);
+                        if (selectedFiles[fileIndex]) {
+                            originalFilename = selectedFiles[fileIndex].name;
+                        }
+                    } catch (err) {
+                        // Silently handle errors
+                    }
+                }
+                
+                // Last resort: try to extract from image src
+                if (!originalFilename) {
+                    try {
+                        if (imgElement && imgElement.src) {
+                            // For blob URLs, this is likely to give us a UUID, not the original filename
+                            const urlParts = imgElement.src.split('/');
+                            if (urlParts.length) {
+                                originalFilename = urlParts[urlParts.length - 1].split('?')[0];
+                            }
+                        }
+                    } catch (err) {
+                        console.warn("Error getting filename from image src:", err);
+                    }
+                }
+
+                // Extract base name without extension, with fallback
+                const baseName = originalFilename ? originalFilename.split('.')[0] : `mask_${Date.now()}`;
+                
+                // Create the file picker with the new naming format
+                const fileHandle = await window.showSaveFilePicker({
+                    suggestedName: `${baseName}_GT.png`,
+                    types: [{
+                        description: 'PNG Files',
+                        accept: {'image/png': ['.png']}
+                    }]
+                });
+                
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                
+                save.innerHTML = "✅ Saved";
+                setTimeout(function() {
+                    save.innerHTML = "💾 Save";
+                }, 3000);
+                
+                // If this was a client-side file, notify the server but don't try to save there
+                if (isClientSideFile) {
+                    fetch("/api/save_mask/" + category + '/' + index, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            'mask': canvas.toDataURL(),
+                            'clientSideFile': true
+                        })
+                    });
+                }
+                
+                return true;
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('Error saving file:', err);
+                }
+                // Reset the save button text on any error
                 save.innerHTML = "❌ Error";
+                setTimeout(function() {
+                    save.innerHTML = "💾 Save";
+                }, 3000);
+                return false;
+            }
+        }
+        
+        saveWithFileSystem().then(success => {
+            if (!success && !isClientSideFile) {
+                // Only fall back to server save if this wasn't a client-side file
+                saveToServer();
+            }
+        });
+    } else {
+        // Fallback to server save for browsers without File System Access API
+        saveToServer();
+    }
+    
+    function saveToServer() {
+        // Existing server save code with additional parameter
+        let promise = fetch("/api/save_mask/" + category + '/' + index, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                'mask': canvas.toDataURL(),
+                'clientSideFile': isClientSideFile
+            })
+        });
+        promise.then(response => {
+            if (response.status !== 200) {
+                console.log('Looks like there was a problem. Status Code: ' +
+                    response.status);
+                save.innerHTML = "❌ Error";
+                return;
             }
 
-            setTimeout(function () {
-                save.innerHTML = "💾 Save";
-            }, 3000);
-        }).catch(error => {
-            console.log(error.message);
-        })
-    })
+            response.json().then(data => {
+                if (data.result) {
+                    save.innerHTML = "✅ Success";
+                } else {
+                    save.innerHTML = "❌ Error";
+                }
+
+                setTimeout(function() {
+                    save.innerHTML = "💾 Save";
+                }, 3000);
+            }).catch(error => {
+                console.log(error.message);
+                save.innerHTML = "❌ Error";
+                setTimeout(function() {
+                    save.innerHTML = "💾 Save";
+                }, 3000);
+            });
+        });
+    }
 }
 
 function keyboardShortcuts(e) {

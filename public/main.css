@@ -117,3 +117,10 @@ body {
     padding: 1rem;
     transform-origin: bottom left;
 }
+
+#control-open {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 101;
+}
