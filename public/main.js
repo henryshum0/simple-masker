@@ -731,7 +731,7 @@ function display_pensize(){
     pen_size.innerHTML = "🖌 Size: " + brush_width;
 }
 
-function floodFill(x, y, fillColor, tolerance = 64) {
+function floodFill(x, y, fillColor, tolerance = 250) {
     // Get image data
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
@@ -844,7 +844,7 @@ function floodFill(x, y, fillColor, tolerance = 64) {
 
     // Optional: bleed fill by 1px to cover tiny gaps
     // Comment out if not needed
-    bleedFill(ctx, fillColor);
+    // bleedFill(ctx, fillColor);
 }
 
 // Add this helper function after floodFill
