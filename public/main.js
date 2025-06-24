@@ -103,9 +103,14 @@ let brush_spacing = 1;
 let last_pos = false;
 let past = [];
 let future = [];
-let history_size = 5;
+let history_size = 20;
 let window_dragging = false;
 let window_lastX, window_lastY;
+
+let img_w, img_h;
+let canvas_width, canvas_height;
+
+let customCursor = document.getElementById('custom-cursor');
 
 // Utility Functions
 
@@ -277,7 +282,6 @@ function drawPoint(x, y) {
 }
 
 // Setup
-let customCursor = document.getElementById('custom-cursor');
 function setupCanvas() {
     canvas = document.getElementById("mask-canvas");
     // Add willReadFrequently attribute to improve getImageData performance
@@ -336,8 +340,8 @@ function hideCustomCursor() {
 
 function moveCustomCursor(e) {
     if (!customCursor) customCursor = document.getElementById('custom-cursor');
-    customCursor.style.left = (e.clientX - brush_width ) + "px";
-    customCursor.style.top = (e.clientY - brush_width ) + "px";
+    customCursor.style.left = (e.clientX - brush_width -2) + "px";
+    customCursor.style.top = (e.clientY - brush_width -2) + "px";
     customCursor.style.display = "block";
 }
 
@@ -349,23 +353,13 @@ let uiHidden = false;
 
 function hideUI() {
     uiHidden = !uiHidden;
-    const ids = ["control-save", "control-switch", "control-size1", "control-size2",
-        "control-size3", "next-button", "back-button", "control-toggle-mask",
-        "control-undo", "control-redo"];
-    for (const elm_id of ids) {
-        let elm = document.getElementById(elm_id);
+    const btns = document.getElementsByClassName("control-button");
+    for (const btn of btns) {
         if (uiHidden) {
-            elm.style.visibility = "hidden";
+            btn.style.display = "none";
         } else {
-            elm.style.visibility = "visible";
+            btn.style.display = "block";
         }
-    }
-
-    let hide = document.getElementById("control-hide")
-    if (uiHidden) {
-        hide.innerHTML = "Unhide";
-    } else {
-        hide.innerHTML = "Hide";
     }
 }
 
@@ -422,8 +416,7 @@ function isFileSystemAccessSupported() {
     return 'showOpenFilePicker' in window && 'showSaveFilePicker' in window;
 }
 
-// Function to open files using the file picker
-async function openFiles() {
+async function openFile() {
     try {
         // Clear the flag
         window.needsFileOpen = false;
@@ -460,18 +453,7 @@ async function openFiles() {
                 if (selectedFiles.length > 0) {
                     const file = selectedFiles[0].file;
                     const imageUrl = URL.createObjectURL(file);
-                    
-                    // Store the original filename with the blob URL as key
-                    originalFilenames[imageUrl] = file.name;
-                    
-                    const image = document.getElementById("mask-image");
-                    image.onload = function() {
-                        drawMask(null, image.height, image.width);
-                        // Don't revoke URL immediately or we lose reference
-                        // We'll clean it up later
-                        // URL.revokeObjectURL(imageUrl);
-                    };
-                    image.src = imageUrl;
+                    return imageUrl; // Return the image URL for further processing
                 }
             }
         } else {
@@ -483,12 +465,7 @@ async function openFiles() {
                 if (event.target.files.length > 0) {
                     const file = event.target.files[0];
                     const imageUrl = URL.createObjectURL(file);
-                    const image = document.getElementById("mask-image");
-                    image.onload = function() {
-                        drawMask(null, image.height, image.width);
-                        URL.revokeObjectURL(imageUrl);
-                    };
-                    image.src = imageUrl;
+                    return imageUrl; // Return the image URL for further processing
                 }
             };
             input.click();
@@ -499,6 +476,58 @@ async function openFiles() {
             console.error('Error opening file:', err);
         }
     }
+}
+
+// Function to open files using the file picker
+async function openImage() {
+    imageUrl = await openFile();
+    if (imageUrl) {
+        let image = document.getElementById("mask-image");
+        image.src = imageUrl;
+        image.onload = function() {
+            // Draw the mask with the loaded image dimensions
+            drawMask(null, image.height, image.width);
+            // Store the original filename with the blob URL as key
+            originalFilenames[imageUrl] = selectedFiles[currentFileIndex].name || "mask_image";
+        }
+    }
+    else {
+        console.error("No image selected or file picker cancelled.");
+    }
+    // Reset the localFileMode flag
+    window.localFileMode = false;
+    // Reset the selectedFiles and currentFileIndex
+    selectedFiles = [];
+    currentFileIndex = 0;
+    // Reset originalFilenames
+    originalFilenames = {};
+}
+
+async function openMask() {
+    maskUrl = await openFile();
+    if (maskUrl) {
+        let mask_canvas = document.getElementById("mask-canvas");
+        let mask_ctx = mask_canvas.getContext('2d');
+        mask_canvas.height = 512; // Set default height
+        mask_canvas.width = 512; // Set default width
+        let img = new Image();
+        img.onload = function() {
+            mask_canvas.height = img.height;
+            mask_canvas.width = img.width;
+            mask_ctx.drawImage(img, 0, 0, img.width, img.height);
+        }
+        img.src = maskUrl;
+    }
+    else {
+        console.error("No mask file selected or file picker cancelled.");
+    }
+    // Reset the localFileMode flag
+    window.localFileMode = false;
+    // Reset the selectedFiles and currentFileIndex
+    selectedFiles = [];
+    currentFileIndex = 0;
+    // Reset originalFilenames
+    originalFilenames = {};
 }
 
 // Modify the saveMask function to indicate when we're saving a client-side file
@@ -568,23 +597,11 @@ function saveMask(category, index) {
                 
                 save.innerHTML = "✅ Saved";
                 setTimeout(function() {
-                    save.innerHTML = "💾 Save";
-                }, 3000);
+                    save.innerHTML = "💾 Save (s)";
+                }, 1000);
                 
                 // If this was a client-side file, notify the server but don't try to save there
-                if (isClientSideFile) {
-                    fetch("/api/save_mask/" + category + '/' + index, {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ 
-                            'mask': canvas.toDataURL(),
-                            'clientSideFile': true
-                        })
-                    });
-                }
+                
                 
                 return true;
             } catch (err) {
@@ -594,63 +611,19 @@ function saveMask(category, index) {
                 // Reset the save button text on any error
                 save.innerHTML = "❌ Error";
                 setTimeout(function() {
-                    save.innerHTML = "💾 Save";
-                }, 3000);
+                    save.innerHTML = "💾 Save (s)";
+                }, 1000);
                 return false;
             }
         }
         
         saveWithFileSystem().then(success => {
-            if (!success && !isClientSideFile) {
-                // Only fall back to server save if this wasn't a client-side file
-                saveToServer();
+            if (!success){
+                console.log("save unsuccessful")
             }
         });
-    } else {
-        // Fallback to server save for browsers without File System Access API
-        saveToServer();
     }
     
-    function saveToServer() {
-        // Existing server save code with additional parameter
-        let promise = fetch("/api/save_mask/" + category + '/' + index, {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-                'mask': canvas.toDataURL(),
-                'clientSideFile': isClientSideFile
-            })
-        });
-        promise.then(response => {
-            if (response.status !== 200) {
-                console.log('Looks like there was a problem. Status Code: ' +
-                    response.status);
-                save.innerHTML = "❌ Error";
-                return;
-            }
-
-            response.json().then(data => {
-                if (data.result) {
-                    save.innerHTML = "✅ Success";
-                } else {
-                    save.innerHTML = "❌ Error";
-                }
-
-                setTimeout(function() {
-                    save.innerHTML = "💾 Save";
-                }, 3000);
-            }).catch(error => {
-                console.log(error.message);
-                save.innerHTML = "❌ Error";
-                setTimeout(function() {
-                    save.innerHTML = "💾 Save";
-                }, 3000);
-            });
-        });
-    }
 }
 
 function keyboardShortcuts(e) {
@@ -663,19 +636,15 @@ function keyboardShortcuts(e) {
         redo();
     }
     // Save
-    if (e.ctrlKey && e.key === 's') {
-        e.preventDefault(); // Prevent default save dialog
-        let category = document.getElementById("category").value;
-        let img_num = document.getElementById("img_num").value;
-        saveMask(category, img_num);
+    if (e.key === 's') {
+        e.preventDefault()
+        saveMask(null, null);
     }
     // Brush sizes
     if (e.key === '1') {
-        changeBrushSize(3);
+        changeBrushSize(-10);
     } else if (e.key === '2') {
         changeBrushSize(10);
-    } else if (e.key === '3') {
-        changeBrushSize(20);
     }
 
     // Switch color
@@ -846,56 +815,3 @@ function floodFill(x, y, fillColor, tolerance = 250) {
     // Comment out if not needed
     // bleedFill(ctx, fillColor);
 }
-
-// Add this helper function after floodFill
-function bleedFill(ctx, fillColor) {
-    const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-    const data = imageData.data;
-    const width = ctx.canvas.width;
-    const height = ctx.canvas.height;
-
-    let fillR, fillG, fillB, fillA;
-    if (fillColor === 'white') {
-        [fillR, fillG, fillB, fillA] = [255, 255, 255, 255];
-    } else if (fillColor === 'black') {
-        [fillR, fillG, fillB, fillA] = [0, 0, 0, 255];
-    } else {
-        [fillR, fillG, fillB, fillA] = [255, 255, 255, 255];
-    }
-
-    // Create a copy to check neighbors
-    const copy = new Uint8ClampedArray(data);
-
-    for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-            const idx = (y * width + x) * 4;
-            // If not filled, but has a filled neighbor, fill it
-            if (
-                !(data[idx] === fillR && data[idx + 1] === fillG && data[idx + 2] === fillB && data[idx + 3] === fillA)
-            ) {
-                // Check 8 neighbors
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        if (dx === 0 && dy === 0) continue;
-                        const nidx = ((y + dy) * width + (x + dx)) * 4;
-                        if (
-                            copy[nidx] === fillR &&
-                            copy[nidx + 1] === fillG &&
-                            copy[nidx + 2] === fillB &&
-                            copy[nidx + 3] === fillA
-                        ) {
-                            data[idx] = fillR;
-                            data[idx + 1] = fillG;
-                            data[idx + 2] = fillB;
-                            data[idx + 3] = fillA;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    ctx.putImageData(imageData, 0, 0);
-}
-
-//flood fill functionality
