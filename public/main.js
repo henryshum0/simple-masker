@@ -9,7 +9,7 @@ let currentFileIndex = 0;
 let localFileMode = false;
 
 // Add this variable to store original filenames
-let originalFilenames = {};
+let opened_mask_name = "";
 
 function load_masking_data(category, index) {
     let promise = fetch("/api/masking_data/" + category + "/" + index);
@@ -111,6 +111,7 @@ let img_w, img_h;
 let canvas_width, canvas_height;
 
 let customCursor = document.getElementById('custom-cursor');
+
 
 // Utility Functions
 
@@ -423,14 +424,12 @@ async function openFile() {
         
         // Set the localFileMode flag
         window.localFileMode = true;
-        selectedFiles = []; // Initialize the array
         currentFileIndex = 0;
         originalFilenames = {}; // Reset original filenames
         
         if (isFileSystemAccessSupported()) {
             // Modern file picker
             const fileHandles = await window.showOpenFilePicker({
-                multiple: true,
                 types: [{
                     description: 'Images',
                     accept: {
@@ -440,35 +439,10 @@ async function openFile() {
             });
             
             if (fileHandles.length > 0) {
-                // Store all selected files
-                for (let i = 0; i < fileHandles.length; i++) {
-                    const file = await fileHandles[i].getFile();
-                    selectedFiles.push({
-                        name: file.name,
-                        file: file
-                    });
-                }
-                
-                // Load the first image
-                if (selectedFiles.length > 0) {
-                    const file = selectedFiles[0].file;
-                    const imageUrl = URL.createObjectURL(file);
-                    return imageUrl; // Return the image URL for further processing
-                }
+                return fileHandles[0].getFile();
             }
         } else {
-            // Fallback for browsers without File System Access API
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.onchange = function(event) {
-                if (event.target.files.length > 0) {
-                    const file = event.target.files[0];
-                    const imageUrl = URL.createObjectURL(file);
-                    return imageUrl; // Return the image URL for further processing
-                }
-            };
-            input.click();
+            console.warn("File System Access API not supported, falling back to legacy file input.");
         }
     } catch (err) {
         if (err.name !== 'AbortError') {
@@ -480,15 +454,20 @@ async function openFile() {
 
 // Function to open files using the file picker
 async function openImage() {
-    imageUrl = await openFile();
+    const file = await openFile();
+    if (!file) {
+        console.error("No file selected or file picker cancelled.");
+        return;
+    }
+    imageUrl = URL.createObjectURL(file);
     if (imageUrl) {
         let image = document.getElementById("mask-image");
         image.src = imageUrl;
         image.onload = function() {
             // Draw the mask with the loaded image dimensions
+            img_w = image.width;
+            img_h = image.height;
             drawMask(null, image.height, image.width);
-            // Store the original filename with the blob URL as key
-            originalFilenames[imageUrl] = selectedFiles[currentFileIndex].name || "mask_image";
         }
     }
     else {
@@ -504,19 +483,11 @@ async function openImage() {
 }
 
 async function openMask() {
-    maskUrl = await openFile();
+    let selectedFile = await openFile();
+    let maskUrl = URL.createObjectURL(selectedFile);
+    opened_mask_name = selectedFile.name; // Store the opened mask name globally
     if (maskUrl) {
-        let mask_canvas = document.getElementById("mask-canvas");
-        let mask_ctx = mask_canvas.getContext('2d');
-        mask_canvas.height = 512; // Set default height
-        mask_canvas.width = 512; // Set default width
-        let img = new Image();
-        img.onload = function() {
-            mask_canvas.height = img.height;
-            mask_canvas.width = img.width;
-            mask_ctx.drawImage(img, 0, 0, img.width, img.height);
-        }
-        img.src = maskUrl;
+        drawMask(maskUrl, img_h, img_w); // Use existing dimensions
     }
     else {
         console.error("No mask file selected or file picker cancelled.");
@@ -535,9 +506,6 @@ function saveMask(category, index) {
     let save = document.getElementById("control-save");
     save.innerHTML = "Saving...";
     
-    // Track if we opened the file locally
-    const isClientSideFile = window.localFileMode === true;
-
     if (isFileSystemAccessSupported()) {
         // Use modern File System Access API
         async function saveWithFileSystem() {
@@ -545,46 +513,14 @@ function saveMask(category, index) {
                 const blob = await new Promise(resolve => canvas.toBlob(resolve));
 
                 // Get original image name with better handling
-                let originalFilename = "";
+                let originalFilename = opened_mask_name;
                 
-                // Try to get filename from our stored original filenames first
-                const imgElement = document.getElementById("mask-image");
-                if (imgElement && imgElement.src && originalFilenames[imgElement.src]) {
-                    originalFilename = originalFilenames[imgElement.src];
-                }
-                // If not found, fall back to selectedFiles
-                else if (localFileMode && selectedFiles && selectedFiles.length > 0) {
-                    try {
-                        const fileIndex = Math.min(currentFileIndex, selectedFiles.length - 1);
-                        if (selectedFiles[fileIndex]) {
-                            originalFilename = selectedFiles[fileIndex].name;
-                        }
-                    } catch (err) {
-                        // Silently handle errors
-                    }
-                }
-                
-                // Last resort: try to extract from image src
-                if (!originalFilename) {
-                    try {
-                        if (imgElement && imgElement.src) {
-                            // For blob URLs, this is likely to give us a UUID, not the original filename
-                            const urlParts = imgElement.src.split('/');
-                            if (urlParts.length) {
-                                originalFilename = urlParts[urlParts.length - 1].split('?')[0];
-                            }
-                        }
-                    } catch (err) {
-                        console.warn("Error getting filename from image src:", err);
-                    }
-                }
-
                 // Extract base name without extension, with fallback
                 const baseName = originalFilename ? originalFilename.split('.')[0] : `mask_${Date.now()}`;
                 
                 // Create the file picker with the new naming format
                 const fileHandle = await window.showSaveFilePicker({
-                    suggestedName: `${baseName}_GT.png`,
+                    suggestedName: `${baseName}.png`,
                     types: [{
                         description: 'PNG Files',
                         accept: {'image/png': ['.png']}
@@ -626,6 +562,10 @@ function saveMask(category, index) {
     
 }
 
+function resetMask() {
+    drawMask(null, img_h, img_w);
+}
+
 function keyboardShortcuts(e) {
     // Undo
     if (e.ctrlKey && e.key === 'z') {
@@ -665,6 +605,9 @@ function keyboardShortcuts(e) {
     }
     else if (e.key === 'q') {
         changeBrushSize(-3);
+    }
+    else if (e.key === 'f') {
+        resetMask();
     }
 }
 
