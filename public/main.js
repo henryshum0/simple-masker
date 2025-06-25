@@ -10,7 +10,7 @@ let localFileMode = false;
 
 // Add this variable to store original filenames
 let opened_mask_name = "";
-
+let opened_file_name = "";
 function load_masking_data(category, index) {
     let promise = fetch("/api/masking_data/" + category + "/" + index);
     promise.then(response => {
@@ -460,6 +460,7 @@ async function openImage() {
         return;
     }
     imageUrl = URL.createObjectURL(file);
+    opened_file_name = file.name; 
     if (imageUrl) {
         let image = document.getElementById("mask-image");
         image.src = imageUrl;
@@ -513,10 +514,10 @@ function saveMask(category, index) {
                 const blob = await new Promise(resolve => canvas.toBlob(resolve));
 
                 // Get original image name with better handling
-                let originalFilename = opened_mask_name;
+                let originalFilename = opened_file_name;
                 
                 // Extract base name without extension, with fallback
-                const baseName = originalFilename ? originalFilename.split('.')[0] : `mask_${Date.now()}`;
+                const baseName = originalFilename ? originalFilename.split('.')[0] + '_GT' : `${Date.now()}_GT`;
                 
                 // Create the file picker with the new naming format
                 const fileHandle = await window.showSaveFilePicker({
