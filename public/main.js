@@ -372,10 +372,10 @@ function toggleMask() {
 function switchColor() {
     let control_switch = document.getElementById("control-switch");
     if (color === "white") {
-        color = "black";
+        color = "rgb(0, 0, 0)"; // Use RGB for black
         control_switch.innerHTML = "⚫️ Black";
     } else {
-        color = "white";
+        color = "rgb(255, 255, 255)"; // Use RGB for white
         control_switch.innerHTML = "⚪️ White";
     }
     updateCustomCursor();
@@ -644,7 +644,7 @@ function display_pensize(){
     pen_size.innerHTML = "🖌 Size: " + brush_width;
 }
 
-function floodFill(x, y, fillColor, tolerance = 250) {
+function floodFill(x, y, fillColor, tolerance = 254) {
     // Get image data
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
@@ -754,8 +754,4 @@ function floodFill(x, y, fillColor, tolerance = 250) {
 
     // Update the canvas
     ctx.putImageData(imageData, 0, 0);
-
-    // Optional: bleed fill by 1px to cover tiny gaps
-    // Comment out if not needed
-    // bleedFill(ctx, fillColor);
 }
