@@ -96,7 +96,7 @@ function drawMask(mask, height, width) {
 let canvas;
 let ctx
 let dragging = false;
-let color = 'white';
+let color = 'rgba(255, 255, 255)';
 let brush_width = 5;
 
 let brush_spacing = 1;
@@ -180,6 +180,7 @@ function paintMouseMove(e) {
         if (dragging) {
             let [x, y] = getMouseXY(e);
             drawPoint(x, y);
+            remvoeGray();
             last_pos = [x, y];
         }
     }
@@ -249,10 +250,10 @@ function dist(x1, y1, x2, y2) {
 }
 
 function drawCircle(x, y, width) {
-    ctx.imageSmoothingEnabled = false;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.beginPath();
+    ctx.imageSmoothingEnabled = false;
     ctx.arc(x, y, width, 0, 2 * Math.PI);
     ctx.fill();
 }
@@ -280,6 +281,22 @@ function drawPoint(x, y) {
     } else {
         drawCircle(x, y, brush_width);
     }
+}
+
+function remvoeGray(){
+    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+    // Simple threshold: if closer to white, set to white; else black
+        let avg = (data[i] + data[i+1] + data[i+2]) / 3;
+        if (avg > 127) {
+            data[i] = data[i+1] = data[i+2] = 255;
+        } else {
+            data[i] = data[i+1] = data[i+2] = 0;
+        }
+        data[i+3] = 255; // fully opaque
+    }
+    ctx.putImageData(imageData, 0, 0);
 }
 
 // Setup
@@ -331,7 +348,7 @@ function updateCustomCursor() {
     if (!customCursor) customCursor = document.getElementById('custom-cursor');
     customCursor.style.width = 2 * brush_width + "px";
     customCursor.style.height = 2 * brush_width + "px";
-    customCursor.style.borderColor = color === "white" ? "white" : "red";
+    customCursor.style.borderColor = color === "rgb(255, 255, 255)" ? "rgb(255, 255, 255)" : "rgb(255, 0, 0)";
 }
 
 function hideCustomCursor() {
@@ -371,12 +388,12 @@ function toggleMask() {
 
 function switchColor() {
     let control_switch = document.getElementById("control-switch");
-    if (color === "white") {
+    if (color === "rgb(255, 255, 255)") {
         color = "rgb(0, 0, 0)"; // Use RGB for black
-        control_switch.innerHTML = "⚫️ Black";
+        control_switch.innerHTML = "⚫️ Black (c)";
     } else {
         color = "rgb(255, 255, 255)"; // Use RGB for white
-        control_switch.innerHTML = "⚪️ White";
+        control_switch.innerHTML = "⚪️ White (c)";
     }
     updateCustomCursor();
 }
@@ -584,7 +601,7 @@ function keyboardShortcuts(e) {
     // Brush sizes
     if (e.key === '1') {
         changeBrushSize(-10);
-    } else if (e.key === '2') {
+    } else if (e.key === '3') {
         changeBrushSize(10);
     }
 
@@ -653,9 +670,9 @@ function floodFill(x, y, fillColor, tolerance = 254) {
 
     // Convert fillColor to RGBA array
     let fillR, fillG, fillB, fillA;
-    if (fillColor === 'white') {
+    if (fillColor === 'rgb(255, 255, 255)') {
         [fillR, fillG, fillB, fillA] = [255, 255, 255, 255];
-    } else if (fillColor === 'black') {
+    } else if (fillColor === 'rgb(0, 0, 0)') {
         [fillR, fillG, fillB, fillA] = [0, 0, 0, 255];
     } else {
         [fillR, fillG, fillB, fillA] = [255, 255, 255, 255];
